@@ -6,8 +6,8 @@
 #
 # ./rayzardemo.py \
 #    --find=":ip=192.168.0.51" \
-#    --filter="_path=weird id.orig_h=192.168.0.51 | count() by id.orig_h,id.resp_h" \
-#    --merge="sum(count) by id.orig_h,id.resp_h" \
+#    --filter="192.168.0.51 | count() by id.orig_h,id.resp_h" \
+#    --merge="sum(count) as count by id.orig_h,id.resp_h" \
 #    | zq -t -
 #
 #
