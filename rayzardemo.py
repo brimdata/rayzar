@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 #
-# Demonstration of using zar, zq, and zql with Ray.
+# Demonstration of using zar, zq, and zql with Ray. A zar archive should already be
+# created, and its location specified via a ZAR_ROOT environment variable.
 #
 # Example usage:
 #
@@ -10,24 +11,15 @@
 #    --merge="sum(count) as count by id.orig_h,id.resp_h" \
 #    | zq -t -
 #
-#
 
 import argparse
 import os
 import ray
 import subprocess
 
+# Default commands; override or specify locations via cli options.
 zqexec = 'zq'
 zarexec = 'zar'
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--zq", help="zq exec path", default=zqexec)
-parser.add_argument("--zar", help="zar exec path", default=zarexec)
-parser.add_argument("--zarroot", help="zar root path", default='')
-parser.add_argument("--find", help="zar find query")
-parser.add_argument("--filter", help="data zql filter")
-parser.add_argument("--merge", help="data zql merge")
-parser.add_argument("-t", "--text", help="output tzng", action='store_true')
 
 def localzq(zql, zng):
     # Applies a zql expression to ZNG data.
@@ -51,7 +43,7 @@ def load(location, filter=None):
     return p.stdout
 
 @ray.remote
-class ZarArchive(object):
+class Archive(object):
     def __init__(self, root):
         self.root = root
 
@@ -69,7 +61,7 @@ def zqcombine(zql, obj_ids):
     return localzq(zql, zng)
 
 @ray.remote
-class ZngAggregator(object):
+class Aggregator(object):
     def __init__(self):
         pass
 
@@ -88,17 +80,28 @@ def textzng(zng):
     return p.stdout.decode("utf-8")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--zq", help="zq exec path", default=zqexec)
+    parser.add_argument("--zar", help="zar exec path", default=zarexec)
+    parser.add_argument("--zarroot", help="zar root path", default=os.getenv('ZAR_ROOT', ''))
+    parser.add_argument("--find", help="zar find query")
+    parser.add_argument("--filter", help="data zql filter")
+    parser.add_argument("--merge", help="data zql merge")
+    parser.add_argument("-t", "--text", help="output tzng", action='store_true')
     args = parser.parse_args()
+
     zqexec = args.zq
     zarexec = args.zar
+    if args.zarroot == '':
+        raise ValueError("missing zar root path; specify with --zarroot or via $ZAR_ROOT")
 
     ray.init()
 
-    zar = ZarArchive.remote(args.zarroot)
+    zar = Archive.remote(args.zarroot)
     srcs = ray.get(zar.find.remote(args.find))
     xformed = [zq.remote(args.filter, src) for src in srcs]
 
-    agg = ZngAggregator.remote()
+    agg = Aggregator.remote()
     res = ray.get(agg.aggregate.remote(args.merge, xformed))
     if not args.text:
         os.sys.stdout.buffer.write(res)
