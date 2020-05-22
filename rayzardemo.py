@@ -29,11 +29,14 @@ parser.add_argument("--filter", help="data zql filter")
 parser.add_argument("--merge", help="data zql merge")
 parser.add_argument("-t", "--text", help="output tzng", action='store_true')
 
-@ray.remote
-def zq(zql, zng):
+def localzq(zql, zng):
     # Applies a zql expression to ZNG data.
     p = subprocess.run(args=[zqexec, zql, '-'], stdout=subprocess.PIPE, input=zng)
     return p.stdout
+
+@ray.remote
+def zq(zql, zng):
+    return localzq(zql, zng)
 
 @ray.remote
 def load(location, filter=None):
@@ -59,18 +62,25 @@ class ZarArchive(object):
         return [load.remote(loc) for loc in locs]
 
 @ray.remote
+def zqcombine(zql, obj_ids):
+    zng = bytearray()
+    for o in obj_ids:
+        zng.extend(ray.get(o))
+    return localzq(zql, zng)
+
+@ray.remote
 class ZngAggregator(object):
     def __init__(self):
         pass
 
+    def rec(self, zql, obj_ids):
+        if len(obj_ids) <= 2:
+            return zqcombine.remote(zql, obj_ids)
+        mid = int(len(obj_ids) / 2)
+        return zqcombine.remote(zql, [self.rec(zql, obj_ids[:mid]), self.rec(zql, obj_ids[mid:])])
+
     def aggregate(self, zql, obj_ids):
-        # TODO: Distribute & pipeline the aggregation.
-        objs = ray.get(obj_ids)
-        b = bytearray()
-        for o in objs:
-            b.extend(o)
-        zng = b
-        return ray.get(zq.remote(zql, zng))
+        return ray.get(self.rec(zql, obj_ids))
 
 def textzng(zng):
     # Returns the textual format of a ZNG object.
