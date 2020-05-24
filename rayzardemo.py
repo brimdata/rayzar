@@ -27,10 +27,6 @@ def localzq(zql, zng):
     return p.stdout
 
 @ray.remote
-def zq(zql, zng):
-    return localzq(zql, zng)
-
-@ray.remote
 def load(location, filter=None):
     # Loads zng data from the given location, optionally transforming it with a zql expression.
     if filter == None:
@@ -42,37 +38,48 @@ def load(location, filter=None):
     p = subprocess.run(args=args, stdout=subprocess.PIPE)
     return p.stdout
 
+# ArchiveSearch implements a ray actor to perform a zar search and provide
+# a stream of hits via the next() method.
 @ray.remote
-class Archive(object):
-    def __init__(self, root):
-        self.root = root
-
-    def find(self, findq):
-        args = [zarexec, 'find', '-R', self.root, findq]
+class ArchiveSearch(object):
+    def __init__(self, root, findq):
+        # we run the find all at once up front... it would be better to stream
+        # this if this weren't a demo
+        args = [zarexec, 'find', '-R', root, findq]
         p = subprocess.run(args=args, stdout=subprocess.PIPE, text=True)
-        locs = p.stdout.splitlines()
-        return [load.remote(loc) for loc in locs]
+        self.locs = p.stdout.splitlines()
 
-@ray.remote
-def zqcombine(zql, obj_ids):
-    zng = bytearray()
-    for o in obj_ids:
-        zng.extend(ray.get(o))
-    return localzq(zql, zng)
+    @ray.method(num_return_vals=1)
+    def next(self):
+        if len(self.locs) == 0:
+            return None
+        loc = self.locs[0]
+        self.locs = self.locs[1:]
+        return loc
 
+# Aggregator implements a ray actor to aggregate results found by a zar search.
+# This could be pandas or numpys logic, but for this simple example, we're storing
+# the data as zng so we very inefficiently exec a process to combine the zng results.
 @ray.remote
 class Aggregator(object):
     def __init__(self):
-        pass
+        self.result = None
 
-    def rec(self, zql, obj_ids):
-        if len(obj_ids) <= 2:
-            return zqcombine.remote(zql, obj_ids)
-        mid = int(len(obj_ids) / 2)
-        return zqcombine.remote(zql, [self.rec(zql, obj_ids[:mid]), self.rec(zql, obj_ids[mid:])])
+    @ray.method(num_return_vals=1)
+    def mix(self, location, merge_zql, filter=None):
+        result = ray.get(load.remote(location, filter))
+        if self.result == None:
+            self.result = result
+        else:
+            zng = bytearray()
+            zng.extend(self.result)
+            zng.extend(result)
+            self.result = localzq(merge_zql, zng)
+        return True #XXX
 
-    def aggregate(self, zql, obj_ids):
-        return ray.get(self.rec(zql, obj_ids))
+    @ray.method(num_return_vals=1)
+    def result(self):
+        return self.result
 
 def textzng(zng):
     # Returns the textual format of a ZNG object.
@@ -97,12 +104,35 @@ if __name__ == "__main__":
 
     ray.init()
 
-    zar = Archive.remote(args.zarroot)
-    srcs = ray.get(zar.find.remote(args.find))
-    xformed = [zq.remote(args.filter, src) for src in srcs]
+    # Launch a ray actor to search for the log chunks that match the query.
+    search = ArchiveSearch.remote(args.zarroot, args.find)
 
+    # Launch a ray actor to aggregate all of the matching chunks.
     agg = Aggregator.remote()
-    res = ray.get(agg.aggregate.remote(args.merge, xformed))
+
+    maxtasks = 4 # XXX
+    tasks = []
+
+    # Loop over the search results and do an parallel aggregation up to
+    # maxtasks in parallel.
+    while True:
+        location = ray.get(search.next.remote())
+        if location == None:
+            break
+        # For each hit, we launch an actor to read the chunk and filter
+        # to only the events that match the search.
+        id = agg.mix.remote(location, args.merge)
+        tasks.append(id)
+        if len(tasks) >= maxtasks:
+            _, tasks = ray.wait(tasks)
+
+    # wait for everything to finish
+    while len(tasks) > 0:
+            _, tasks = ray.wait(tasks)
+
+    # grab the result from the aggregation
+    res = ray.get(agg.result.remote())
+
     if not args.text:
         os.sys.stdout.buffer.write(res)
     else:
