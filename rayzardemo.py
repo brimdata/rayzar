@@ -117,7 +117,7 @@ if __name__ == "__main__":
         location = ray.get(search.next.remote())
         if location == None:
             break
-        # For each hit, we launch an actor to read the chunk and filter
+        # For each hit, we create a task to read the chunk and filter
         # to only the events that match the search.
         id = agg.mix.remote(location, args.merge)
         tasks.append(id)
