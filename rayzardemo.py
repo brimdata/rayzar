@@ -49,7 +49,6 @@ class ArchiveSearch(object):
         p = subprocess.run(args=args, stdout=subprocess.PIPE, text=True)
         self.locs = p.stdout.splitlines()
 
-    @ray.method(num_return_vals=1)
     def next(self):
         if len(self.locs) == 0:
             return None
@@ -65,7 +64,6 @@ class Aggregator(object):
     def __init__(self):
         self.result = None
 
-    @ray.method(num_return_vals=1)
     def mix(self, location, merge_zql, filter=None):
         result = ray.get(load.remote(location, filter))
         if self.result == None:
@@ -77,7 +75,6 @@ class Aggregator(object):
             self.result = localzq(merge_zql, zng)
         return True #XXX
 
-    @ray.method(num_return_vals=1)
     def result(self):
         return self.result
 
@@ -94,6 +91,7 @@ if __name__ == "__main__":
     parser.add_argument("--find", help="zar find query")
     parser.add_argument("--filter", help="data zql filter")
     parser.add_argument("--merge", help="data zql merge")
+    parser.add_argument("--nreaders", help="maximum numer of parallel zar readers", default=4)
     parser.add_argument("-t", "--text", help="output tzng", action='store_true')
     args = parser.parse_args()
 
@@ -110,11 +108,11 @@ if __name__ == "__main__":
     # Launch a ray actor to aggregate all of the matching chunks.
     agg = Aggregator.remote()
 
-    maxtasks = 4 # XXX
+    maxreaders = args.nreaders
     tasks = []
 
     # Loop over the search results and do an parallel aggregation up to
-    # maxtasks in parallel.
+    # maxreaders in parallel.
     while True:
         location = ray.get(search.next.remote())
         if location == None:
@@ -123,7 +121,7 @@ if __name__ == "__main__":
         # to only the events that match the search.
         id = agg.mix.remote(location, args.merge)
         tasks.append(id)
-        if len(tasks) >= maxtasks:
+        if len(tasks) >= maxreaders:
             _, tasks = ray.wait(tasks)
 
     # wait for everything to finish
