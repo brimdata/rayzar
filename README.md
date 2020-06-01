@@ -226,20 +226,38 @@ aggregation table gets too big (thus providing scale-out memory along with
 scale-out throughput) and, secondly, to implement a shuffle to
 route the table rows to the worker that owns the row.  Ownership of rows
 is handled like spark and map-reduce using a hash partition.  The
-number of dynamics nodes would be limited either because the cluster
-manager (i.e., kubernetes) indicates no more resources are available
+number of dynamic nodes is limited either because the cluster
+manager (e.g., kubernetes) indicates no more resources are available
 or a configured scale-out limit is hit.  Either way, when there are no
 more available resources, workers then spill to disk.
 
-In this approach, we take advantage of decomposable aggregations by
-caching partial results that need to be shuffled to the owner.  Here each
-node has their own large aggregation table along with N-1, smaller
-aggregation tables that are a cache of partial results.  By maintaining this
-cache, we can aggregate records with the same key before sending the partial
-results to the owner.  These partial results are streamed in batches to the
-owner.  At end-of-stream, a worker flushes its caches and streams back its
-table (perhaps mixing in any spills) over the parent REST call that invoked
-that worker.  This process of
+In this approach, we begin with N=M workers for throughput parallelism then
+dynamically add workers (increasing N) to provide additional memory scale-out
+and throughput parallelism.  The traversal range is divided among the M workers
+in some way (i.e., evenly divided, partitioned with a block/M stride, etc)
+
+When a worker hits a memory limit because its aggregation table gets to big,
+it splits its job, say in 2 (though this fanout can be configured), or it resorts
+to spilling if no resource is available for the split.  When it splits,
+half of the key space and half of the input partition goes to the new child.
+
+Once split, the worker initiate a _continuous shuffle_, where each worker pushes
+rows that it does not own to the owner of those rows.  At any point in time,
+every worker knows the other N-1 workers in the job, how the keys are partitioned
+across the workers, and its individual position in the set of workers.  Thus,
+each worker knows where to send rows that it does not own.
+
+To optimize the continuous shuffle, each worker keeps N-1 _peer tables_ to batch
+the streaming updates.  As records arrive in this table, they can be aggregated
+before transmission potentially reducing the overhead.  In general,
+larger peer tables results in lower overhead.  A configuration
+parameter controls the ratio of the size of the peer table storage to the
+primary table.  Note that the peer tables do not need to all be the same size and
+can shared a dynamic size to better optimize non-uniform data patterns.
+
+At end-of-stream, a worker flushes its caches and streams back its
+table (perhaps mixing in any spills) to its parent in response to the
+REST call that invoked that worker.  This process of
 writing results may block if the parent is not yet done.  If so, when the
 parent is done and ready, it will read the results from all of its children,
 and propagate the merged results in sorted order to its parent and so forth.
@@ -252,7 +270,7 @@ the partial updates will all flow to their respective owners in an
 eventually-consistent manner.
 
 The implementation of all of this turns out to be remarkably simple given the
-zq software architecture.  There is no need for a centralized scheduler as in
+zq software architecture.  There is no need for a centralized controller as in
 spark and hadoop to schedule and manage sequential processing stages.  It goes
 without saying that the data flowing between workers are simply zng streams.
 Also, the interactions between workers are straightforward REST calls not unlike
