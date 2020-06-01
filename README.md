@@ -234,14 +234,18 @@ more available resources, workers then spill to disk.
 In this approach, we begin with N=M workers for throughput parallelism then
 dynamically add workers (increasing N) to provide additional memory scale-out
 and throughput parallelism.  The traversal range is divided among the M workers
-in some way (i.e., evenly divided, partitioned with a block/M stride, etc)
+in some way (i.e., evenly divided, partitioned with a block/M stride, etc).
+For now, we assume these initial M workers do not partition the key space and
+instead the result are merged at the end.  The key space could also be
+partitioned across the initial workers with some small changes to the approach
+outlined below.
 
 When a worker hits a memory limit because its aggregation table gets to big,
 it splits its job, say in 2 (though this fanout can be configured), or it resorts
 to spilling if no resource is available for the split.  When it splits,
 half of the key space and half of the input partition goes to the new child.
 
-Once split, the worker initiate a _continuous shuffle_, where each worker pushes
+Once split, the worker initiates a _continuous shuffle_, where it pushes
 rows that it does not own to the owner of those rows.  At any point in time,
 every worker knows the other N-1 workers in the job, how the keys are partitioned
 across the workers, and its individual position in the set of workers.  Thus,
@@ -255,7 +259,7 @@ parameter controls the ratio of the size of the peer table storage to the
 primary table.  Note that the peer tables do not need to all be the same size and
 can shared a dynamic size to better optimize non-uniform data patterns.
 
-At end-of-stream, a worker flushes its caches and streams back its
+At end-of-stream, a worker flushes its peer tables and streams back its
 table (perhaps mixing in any spills) to its parent in response to the
 REST call that invoked that worker.  This process of
 writing results may block if the parent is not yet done.  If so, when the
