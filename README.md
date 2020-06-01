@@ -41,7 +41,7 @@ stateful actors and run stateless tasks that all coordinate to carry out
 distributed computation.  Actors store state as
 immutable objects that other actors and tasks can access.  Actors and
 tasks can launch other actors and tasks and the Ray scheduler and distributed
-object manager make everything work magically together.
+object manager coordinate activity across the cluster.
 
 ## setup
 
@@ -103,11 +103,10 @@ operated upon before being resulted into the plasma object store in the Arrow fo
 
 ## incremental deployment model
 
-Supposing you had an existing deployment of stored data that was accessed by Ray,
-you could conceivably index this existing data with zar and add a search capability
+If you have an existing set of data accessible by Ray,
+you could conceivably index this data with zar and add a search capability
 to any jobs that traverse the stored data file by file using the zar-find actor
-from this example.  In fact, zar find could be parallelized by providing
-a different zar root to search for the set of files under that root that match.
+from this example.
 Then, any existing code that processed batches of files using ray/zar would then
 simply process the subset of files that matched the search.  And since the search
 runs very fast by consulting index tables, the job would speed up very dramatically
@@ -159,7 +158,7 @@ So, let's talk about a hypothetical search query over some implied time range:
 blah | sum(foo) by bar
 ```
 This searches for all data that matches the pattern `blah` and
-sumsa the values of field `foo` with respect to each value in the field `bar`.
+sums the values of field `foo` with respect to each value in the field `bar`.
 
 As anyone knows who has spent time working on OLAP internals or systems like
 spark or map-reduce, since sum is a composable aggregation, this can be sped up
@@ -188,7 +187,7 @@ setting up complex clusters?
 ### version 1: a static model
 
 The hadoopy approach for all this is to just spill to disk.  Any aggregation
-(or sort etc)
+(or sort, or other grouping operation)
 in a zql flowgraph will have a table, organized by a set of group-by or
 sort keys (one or more of primary, second, etc key).  To deal with
 memory limits, whenever this table hits a configured size limit (related
@@ -209,7 +208,7 @@ of the key space is low.
 If you have a feel for how much memory you need ahead of time, you could
 launch N jobs in parallel so a high-cardinality group-by table
 gets split out efficiently.  In this case, the key space isn't disjoint
-but it might not matter much if the sub-cardinilaty of each key is small
+but it might not matter much if the sub-cardinality of each key is small
 (meaning there is little advantage to a shuffle)
 so in general this could work well depending on the underlying data
 characteristic.  And if the memory limit is hit here, the table is spilled
@@ -219,8 +218,8 @@ to disk as above.
 
 There are two key problems with the static approach.  First, you don't generally
 know how to choose N so it's unreasonable to ask the user to specify this.
-And second, the key space is replicated over each node making the tables inefficient
-and larger than they need to be.
+And second, partitioning the work by time means the key space is replicated
+over each node making the tables inefficient and larger than they need to be.
 
 A solution to these problems is, firstly, to fork a new worker only after the
 aggregation table gets too big (thus providing scale-out memory along with
