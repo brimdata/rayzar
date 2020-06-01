@@ -179,7 +179,7 @@ to disk if and when possible.
 
 Both hadoop and spark implemented the fully general map-reduce model.
 But what if we focused on zql-style queries leveraging the typical case of
-deable aggregations and integrate into the design the use of search indexes
+decomposable aggregations and integrate into the design the use of search indexes
 during query traversals?  And what if this were all exposed as simple
 unix tools that can be experimented with from the command-line without
 setting up complex clusters?
