@@ -128,24 +128,24 @@ in a monolithic system, they are exposed as simple zng files and become
 first-class objects, exposed to the developer to use a building block
 in whatever analytics and tooling they can dream up.
 
-## composable aggregations
+## decomposable aggregations
 
 While Ray is incredibly powerful, it might prove to be overkill for many simpler
 scenarios of data-lake analytics where you don't necessarily need machine-learning
 models, GPU scheduling, parallel simulations, and so forth.
 
-In particular, a so-called "composable aggregation" can be distributed and
+In particular, a so-called "decomposable aggregation" can be distributed and
 aggregated very efficiently.  These aggregations have the property that
 the overall result can be computed as a combination of partial results.
 
 A "count" aggregation is an obvious example where if you partition
 the data into two sets and count certain values in each set you can sum the
 resulting counts to get the total count.  Sum, average, variance, set-union,
-null, and so forth are all composable aggregations.  Large-scale joins
+null, and so forth are all decomposable aggregations.  Large-scale joins
 can also fit into this framework.
 
 This concept isn't completely new.  Many existing systems
-take advantage of the composable aggregations,
+take advantage of the decomposable aggregations,
 but when programming map-reduce jobs in a data lake,
 you typically have to structure your code specifically to take
 advantage of this property.  For example, in spark, you can use the
@@ -161,7 +161,7 @@ This searches for all data that matches the pattern `blah` and
 sums the values of field `foo` with respect to each value in the field `bar`.
 
 As anyone knows who has spent time working on OLAP internals or systems like
-spark or map-reduce, since sum is a composable aggregation, this can be sped up
+spark or map-reduce, since sum is a decomposable aggregation, this can be sped up
 by partitioning the time range across some number of processors and aggregating
 the results across the processors as they complete.
 
@@ -179,7 +179,7 @@ to disk if and when possible.
 
 Both hadoop and spark implemented the fully general map-reduce model.
 But what if we focused on zql-style queries leveraging the typical case of
-composable aggregations and integrate into the design the use of search indexes
+deable aggregations and integrate into the design the use of search indexes
 during query traversals?  And what if this were all exposed as simple
 unix tools that can be experimented with from the command-line without
 setting up complex clusters?
