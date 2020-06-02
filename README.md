@@ -85,7 +85,7 @@ results are read in a blocking manner then they are return one-by-one via the
 For each matching file, a
 [Ray task](https://github.com/brimsec/rayzar/blob/2b6efde844abc30eb60e3e700987d16de441febe/rayzardemo.py#L30)
 is run to read the file by inefficiently execing zq, applying the specified zql filter,
-and returning the data return by zq in one shot.
+and returning the output in one shot.
 
 The [Aggregator class](https://github.com/brimsec/rayzar/blob/2b6efde844abc30eb60e3e700987d16de441febe/rayzardemo.py#L63)
 is a Ray actor that aggregates together each of the results that is read and
@@ -141,7 +141,7 @@ the overall result can be computed as a combination of partial results.
 A "count" aggregation is an obvious example where if you partition
 the data into two sets and count certain values in each set you can sum the
 resulting counts to get the total count.  Sum, average, variance, set-union,
-null, and so forth are all decomposable aggregations.  Large-scale joins
+top-k, null, and so forth are all decomposable aggregations.  Large-scale joins
 can also fit into this framework.
 
 This concept isn't completely new.  Many existing systems
@@ -169,7 +169,7 @@ If the values of bar comprise a low-cardinality set, then this would work fine
 and you could choose any level of parallelism.  However, if `bar` has high cardinality,
 then the workers could run out of memory.
 
-Unfortunately, you don't know ahead of time the cardinality of the group-by condition.
+Unfortunately, you don't know ahead of time the cardinality of the group-by dimension.
 
 This is why hadoop map-reduce then spark were created.  Hadoop dealt with this
 memory problem by spilling data to disk and shuffling and merging data from disk
