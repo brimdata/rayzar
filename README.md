@@ -53,16 +53,32 @@ and running
 ```
 make install
 ```
-You also need ray installed, so do
+
+Ray requires Python 3. If you do not already have Python 3 set up, a convenient way to do that is with pyenv (https://github.com/pyenv/pyenv) which you can install with brew.
+
+To install Ray:
 ```
 pip install ray
 ```
+
+To get sample data you can clone the zq-sample-data repo, and make it available in a ZAR_ROOT with the following commands (or something similar):
+```
+mkdir /tmp/logs
+export ZAR_ROOT=/tmp/logs
+zq zq-sample-data/zng/*.gz | zar import -s 25MB -
+```
+
+TODO: what to do with this dataset in ray? I tried looking at a few of the records with:
+```
+zar zq "*" | zq -t - | less
+```
+But it looks like the example command below is expecting different data than zq-sample-data/zng. 
 
 ## run the example
 
 To try out the example, run something like this:
 ```
-./rayzardemo.py --find=":ip=192.168.0.51" --N=4 \
+./rayzardemo.py --find=":ip=192.168.0.51" -N=4 \
         --filter="192.168.0.51 | count() by id.orig_h,id.resp_h" \
         --merge="sum(count) as count by id.orig_h,id.resp_h" | zq -t -
 ```
@@ -71,7 +87,7 @@ the `--filter` argument provides a zql command that is applied to each file foun
 and the `--merge` argument provides a zql command that combines the output of  
 each filtered result into a running result.  
 
-The degree of concurrency is controlled by the `--N` argument.
+The degree of concurrency is controlled by the `-N` argument.
 
 In the toy example here, a zar search is implemented as a ray actor that traverses
 a zar archive enumerating the data files that match a provided search expression.

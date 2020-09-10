@@ -91,7 +91,7 @@ if __name__ == "__main__":
     parser.add_argument("--find", help="zar find query")
     parser.add_argument("--filter", help="data zql filter")
     parser.add_argument("--merge", help="data zql merge")
-    parser.add_argument("--nreaders", help="maximum numer of parallel zar readers", default=4)
+    parser.add_argument("-N","--nreaders", help="maximum number of parallel zar readers", default=4)
     parser.add_argument("-t", "--text", help="output tzng", action='store_true')
     args = parser.parse_args()
 
